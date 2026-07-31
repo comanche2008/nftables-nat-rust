@@ -402,6 +402,36 @@ echo "nat_local_ip=10.10.10.10" > /opt/nat/env
 systemctl restart nat
 ```
 
+### IPv6 转发与 RA
+
+程序启动时会开启 `net.ipv6.conf.all.forwarding=1`。Linux 在启用 IPv6 转发后，接口的
+`accept_ra=1` 将不再接收路由器通告（RA），可能导致通过 RA 获取的 IPv6 默认路由在
+过期后消失。
+
+为避免影响宿主机 IPv6，程序会在开启转发前执行以下处理：
+
+1. 从 IPv6 默认路由和公网 IPv6 地址识别上联网卡；
+2. 仅将这些网卡当前的 `accept_ra=1` 调整为 `accept_ra=2`；
+3. 保留显式设置为 `accept_ra=0` 的网卡，不修改 loopback、ULA 和只有 link-local
+   地址的容器网卡。
+
+`accept_ra=2` 表示即使启用了 IPv6 转发，该接口仍可接收 RA。程序只修改运行时
+sysctl；如果 NetworkManager、systemd-networkd 或其他服务之后覆盖了该值，请为实际
+上联网卡添加持久配置，例如：
+
+```bash
+# 查看当前值和 IPv6 默认路由（将 eth0 替换为实际上联网卡）
+sysctl net.ipv6.conf.eth0.accept_ra
+ip -6 route show default
+
+# 持久允许 eth0 在转发模式下接收 RA
+echo 'net.ipv6.conf.eth0.accept_ra = 2' > /etc/sysctl.d/99-nftables-nat-ipv6.conf
+sysctl --system
+```
+
+出于安全考虑，只应在需要从上游路由器获取 RA 的接口上启用该设置。相关问题参见
+[Issue #52](https://github.com/arloor/nftables-nat-rust/issues/52)。
+
 ## 🐋 Docker 兼容性
 
 本工具已与 Docker 完全兼容。程序会自动调整 nftables 规则以适配 Docker 网络。
