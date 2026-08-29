@@ -400,8 +400,16 @@ nft list ruleset
 
 # 仅查看 NAT 表
 nft list table ip self-nat
-nft list table ip6 self-nat6
+nft list table ip6 self-nat
+
+# 查看 DNAT map（端口 -> 目标）
+nft list map ip self-nat tcp_dnat
+nft list map ip self-nat tcp_dnat_ip
 ```
+
+生成的 DNAT/REDIRECT 规则会匹配 `fib daddr type local`，只改写目的地址为本机的流量，避免劫持转发中的过路包。同一 family 的 SNAT 折叠为一条 `ct mark 0x4e4154 masquerade`。
+
+RANGE 原样转发进 `tcp_dnat_ip`/`udp_dnat_ip`（保留目的端口）。等宽平移不能放进 map：nftables 要求 map value 是 singleton，`53051-53080 : 1.2.3.4 . 51051-51080` 会失败，因此生成一条内核原生 interval DNAT：`dnat to 1.2.3.4:51051-51080`。
 
 ## 🔧 高级配置
 
